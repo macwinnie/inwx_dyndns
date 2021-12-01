@@ -25,6 +25,7 @@ po_recip  = json.loads( os.getenv( 'PUSHOVER', '[]' ))
 inwx_user = os.getenv( 'USER' )
 inwx_pass = os.getenv( 'PASS' )
 lensleep  = os.getenv( 'SLEEP', 60 )
+dns_srvrs = json.loads( os.getenv( 'DNSSRV', '[]' ))
 date_f    = "%d.%m.%Y %H:%M.%S"
 
 ###
@@ -112,15 +113,19 @@ while True:
 
     for s in scope:
         public_ip   = requests.get( public_checks[ s ] ).content.decode( 'utf8' )
-        current_dns = dns.resolver.resolve( fqdn, s )
+
+        if len( dns_srvrs ) > 0:
+            resolver = dns.resolver.Resolver()
+            resolver.nameservers = dns_srvrs
+            current_dns = resolver.resolve( fqdn, s )
+        else:
+            current_dns = dns.resolver.resolve( fqdn, s )
+
         if len( current_dns ) > 1:
             push_msg( 'ERROR: Multiple DNS entries for {} records!'.format( s ), 2 )
 
         current_dns = str( current_dns[ 0 ] )
 
-        # ToDo: renew if last update is older than defined time (env var)
-        print(current_dns)
-        print(public_ip)
         if public_ip != current_dns:
             change[ api_keys[ s ] ] = public_ip
 
