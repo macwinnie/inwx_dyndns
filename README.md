@@ -22,3 +22,4 @@ There is a `.env.example` which lists all available environmental variables. The
 | `PASS`                | NAV                   | yes                | INWX DynDNS user password |
 | `SCOPE`               | `A`                   | yes                | scope of DynDNS check – comma (no spaces!) separated list of `A` and / or `AAAA`. Don't forget to enable IPv6 for your Docker-Container if your scope includes `AAAA` ;) |
 | `PUSHOVER`            | `[]`                  | yes                | JSON string representing a list of PushOver token. The list may contain multiple dictionaries consisting by the two keys `user_key` and `token`. |
+| `SLEEP`               | `60`                  | no                 | The script runs within an infinity loop – and sleeps for this amount of seconds between every run. |

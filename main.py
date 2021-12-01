@@ -24,6 +24,7 @@ fqdn      = os.getenv( 'HOST' )
 po_recip  = json.loads( os.getenv( 'PUSHOVER', '[]' ))
 inwx_user = os.getenv( 'USER' )
 inwx_pass = os.getenv( 'PASS' )
+lensleep  = os.getenv( 'SLEEP', 60 )
 date_f    = "%d.%m.%Y %H:%M.%S"
 
 ###
@@ -107,35 +108,39 @@ api_keys = {
 
 change = {}
 
-for s in scope:
-    public_ip   = requests.get( public_checks[ s ] ).content.decode( 'utf8' )
-    current_dns = dns.resolver.resolve( fqdn, s )
-    if len( current_dns ) > 1:
-        push_msg( 'ERROR: Multiple DNS entries for {} records!'.format( s ), 2 )
+while True:
 
-    current_dns = str( current_dns[ 0 ] )
+    for s in scope:
+        public_ip   = requests.get( public_checks[ s ] ).content.decode( 'utf8' )
+        current_dns = dns.resolver.resolve( fqdn, s )
+        if len( current_dns ) > 1:
+            push_msg( 'ERROR: Multiple DNS entries for {} records!'.format( s ), 2 )
 
-    # ToDo: renew if last update is older than defined time (env var)
-    print(current_dns)
-    print(public_ip)
-    if public_ip != current_dns:
-        change[ api_keys[ s ] ] = public_ip
+        current_dns = str( current_dns[ 0 ] )
 
-if len( change ) > 0:
-    api_client   = ApiClient( api_url=ApiClient.API_LIVE_URL, debug_mode=False )
-    login_result = api_client.login( inwx_user, inwx_pass )
-    if login_result[ 'code' ] == 1000:
-        # login was successful
-        dyndnsupdate = api_client.call_api(
-            api_method='dyndns.updateRecord',
-            method_params=change
-        )
-        if dyndnsupdate[ 'code' ] == 1000:
-            for c, val in change.items():
-                s = list( api_keys.keys())[ list( api_keys.values()).index( c ) ]
-                insert_new( s, val )
-                push_msg( 'Updated {} record to {}'.format( s, val ) )
+        # ToDo: renew if last update is older than defined time (env var)
+        print(current_dns)
+        print(public_ip)
+        if public_ip != current_dns:
+            change[ api_keys[ s ] ] = public_ip
+
+    if len( change ) > 0:
+        api_client   = ApiClient( api_url=ApiClient.API_LIVE_URL, debug_mode=False )
+        login_result = api_client.login( inwx_user, inwx_pass )
+        if login_result[ 'code' ] == 1000:
+            # login was successful
+            dyndnsupdate = api_client.call_api(
+                api_method='dyndns.updateRecord',
+                method_params=change
+            )
+            if dyndnsupdate[ 'code' ] == 1000:
+                for c, val in change.items():
+                    s = list( api_keys.keys())[ list( api_keys.values()).index( c ) ]
+                    insert_new( s, val )
+                    push_msg( 'Updated {} record to {}'.format( s, val ) )
+            else:
+                push_msg( 'ERROR: Updating DynDNS was not successfull.', 2 )
         else:
-            push_msg( 'ERROR: Updating DynDNS was not successfull.', 2 )
-    else:
-        push_msg( 'ERROR: Login to INWX was not successfull.', 2 )
+            push_msg( 'ERROR: Login to INWX was not successfull.', 2 )
+
+    time.sleep( lensleep )
