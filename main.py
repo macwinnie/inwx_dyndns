@@ -147,5 +147,7 @@ while True:
                 push_msg( 'ERROR: Updating DynDNS was not successfull.', 2 )
         else:
             push_msg( 'ERROR: Login to INWX was not successfull.', 2 )
+        # empty the change data objects
+        change   = {}
 
     time.sleep( lensleep )
