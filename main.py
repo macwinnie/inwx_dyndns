@@ -113,6 +113,7 @@ old_data = {}
 while True:
 
     for s in scope:
+        s = s.strip()
         if s not in api_keys:
             push_msg( 'ERROR: {} is not a valid record in scope for this DynDNS action!'.format( s ), 2 )
         else:
