@@ -107,27 +107,38 @@ api_keys = {
     'AAAA': 'ipAddressV6',
 }
 
-change = {}
+change   = {}
+old_data = {}
 
 while True:
 
     for s in scope:
-        public_ip   = requests.get( public_checks[ s ] ).content.decode( 'utf8' )
-
-        if len( dns_srvrs ) > 0:
-            resolver = dns.resolver.Resolver()
-            resolver.nameservers = dns_srvrs
-            current_dns = resolver.resolve( fqdn, s )
+        if s not in api_keys:
+            push_msg( 'ERROR: {} is not a valid record in scope for this DynDNS action!'.format( s ), 2 )
         else:
-            current_dns = dns.resolver.resolve( fqdn, s )
+            public_ip   = requests.get( public_checks[ s ] ).content.decode( 'utf8' )
 
-        if len( current_dns ) > 1:
-            push_msg( 'ERROR: Multiple DNS entries for {} records!'.format( s ), 2 )
+            if len( dns_srvrs ) > 0:
+                resolver = dns.resolver.Resolver()
+                resolver.nameservers = dns_srvrs
+                current_dns = resolver.resolve( fqdn, s )
+            else:
+                current_dns = dns.resolver.resolve( fqdn, s )
 
-        current_dns = str( current_dns[ 0 ] )
+            if len( current_dns ) > 1:
+                rs = ''
+                for cd in current_dns:
+                    rs += '\n* {}'.format( str( cd ) )
+                push_msg( 'ERROR: Multiple DNS entries for {} records!\n\nResults returned:{}\n\nPublic IP is: {}'.format( s, rs, public_ip ), 2 )
 
-        if public_ip != current_dns:
-            change[ api_keys[ s ] ] = public_ip
+            current_dns = str( current_dns[ 0 ] )
+
+            if public_ip != current_dns:
+                change[ api_keys[ s ] ] = public_ip
+                old_data[ s ]           = {
+                    'current': current_dns,
+                    'new'    : public_ip,
+                }
 
     if len( change ) > 0:
         api_client   = ApiClient( api_url=ApiClient.API_LIVE_URL, debug_mode=False )
@@ -142,12 +153,13 @@ while True:
                 for c, val in change.items():
                     s = list( api_keys.keys())[ list( api_keys.values()).index( c ) ]
                     insert_new( s, val )
-                    push_msg( 'Updated {} record to {}'.format( s, val ) )
+                    push_msg( 'Updated {} record to {} – current DNS was {}'.format( s, val, old_data[ s ][ 'current' ] ) )
             else:
-                push_msg( 'ERROR: Updating DynDNS was not successfull.', 2 )
+                push_msg( 'ERROR: Updating DynDNS was not successfull.\nChange object would have been:\n\n{}'.format( json.dumps( old_data ) ), 2 )
         else:
-            push_msg( 'ERROR: Login to INWX was not successfull.', 2 )
+            push_msg( 'ERROR: Login to INWX was not successfull.\nChange object would have been:\n\n{}'.format( json.dumps( old_data ) ), 2 )
         # empty the change data objects
         change   = {}
+        old_data = {}
 
     time.sleep( lensleep )
