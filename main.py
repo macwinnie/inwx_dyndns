@@ -6,6 +6,8 @@
 import datetime, os, sys, subprocess, json, time
 
 print('installation of requirements ...', file=sys.stderr)
+subprocess.check_call( [sys.executable, '-m', 'pip', "install", "--upgrade", "pip", "setuptools==57.5.0" ], stdout=open(os.devnull, 'wb') )
+subprocess.check_call( [sys.executable, '-m', 'pip', "install", "--upgrade", "python-pushover" ], stdout=open(os.devnull, 'wb') )
 subprocess.check_call( [sys.executable, '-m', 'pip'] + 'install -r requirements.txt'.split(), stdout=open(os.devnull, 'wb') )
 print('... finished.', file=sys.stderr)
 print('', file=sys.stderr)
