@@ -21,14 +21,16 @@ load_dotenv()
 ###
 ## get variables from env
 ###
-scope     = os.getenv( 'SCOPE', 'A' ).split( ',' )
-fqdn      = os.getenv( 'HOST' )
-po_recip  = json.loads( os.getenv( 'PUSHOVER', '[]' ))
-inwx_user = os.getenv( 'USER' )
-inwx_pass = os.getenv( 'PASS' )
-lensleep  = os.getenv( 'SLEEP', 60 )
-dns_srvrs = json.loads( os.getenv( 'DNSSRV', '[]' ))
-date_f    = "%d.%m.%Y %H:%M.%S"
+scope           = os.getenv( 'SCOPE', 'A' ).split( ',' )
+fqdn            = os.getenv( 'HOST' )
+po_recip        = json.loads( os.getenv( 'PUSHOVER', '[]' ))
+inwx_user       = os.getenv( 'USER' )
+inwx_pass       = os.getenv( 'PASS' )
+lensleep        = os.getenv( 'SLEEP', 60 )
+json_indent     = os.getenv( 'JSON_INDENT', 3 )
+error_tolerance = os.getenv( 'ERROR_TOLERANCE', 3 )
+dns_srvrs       = json.loads( os.getenv( 'DNSSRV', '[]' ))
+date_f          = "%d.%m.%Y %H:%M.%S"
 
 ###
 ## set timezone
@@ -62,6 +64,93 @@ backend.apply_migrations( backend.to_apply( migrations ))
 ###
 ## functions to be defined
 ###
+def count_current_errors():
+    dbcon = sqlite3.connect( dbfile )
+
+    sql = 'SELECT value FROM dyndns_keyvalue WHERE key = \'cur_error_count\''
+
+    cur = dbcon.cursor()
+    cur.execute( sql )
+    error_count = cur.fetchone()
+    if error_count == None:
+        error_count = 0
+    else:
+        error_count = error_count[0]
+
+    dbcon.commit()
+    dbcon.close()
+
+    return int( error_count )
+
+def check_error_send():
+    error_count = count_current_errors()
+    return error_count >= error_tolerance
+
+def reset_error_state():
+    dbcon = sqlite3.connect( dbfile )
+
+    sql = 'INSERT OR REPLACE INTO dyndns_keyvalue ( key, value ) VALUES ( \'error_state\', \'False\' );'
+    cur = dbcon.cursor()
+    cur.execute( sql )
+
+    sql = 'INSERT OR REPLACE INTO dyndns_keyvalue ( key, value ) VALUES ( \'cur_error_count\', 0 );'
+    cur = dbcon.cursor()
+    cur.execute( sql )
+
+    dbcon.commit()
+    dbcon.close()
+
+def write_error( text ):
+    dbcon = sqlite3.connect( dbfile )
+
+    sql = 'INSERT OR REPLACE INTO dyndns_keyvalue ( key, value ) VALUES ( \'error_state\', \'True\' );'
+    cur = dbcon.cursor()
+    cur.execute( sql )
+
+    dbcon.commit()
+    dbcon.close()
+
+    error_count = count_current_errors()
+
+    dbcon = sqlite3.connect( dbfile )
+
+    sql = 'INSERT OR REPLACE INTO dyndns_keyvalue ( key, value ) VALUES ( \'cur_error_count\', ? );'
+    cur = dbcon.cursor()
+    cur.execute( sql, [ error_count + 1] )
+
+    getIdSql = 'SELECT MAX( id ) FROM dyndns_error;'
+    cur      = dbcon.cursor()
+    cur.execute( getIdSql )
+    max_id   = cur.fetchone()[0]
+    if max_id == None:
+        max_id = 0
+
+    entry = [
+        max_id + 1,
+        text,
+        datetime.datetime.now().strftime( date_f )
+    ]
+
+    insert = 'INSERT INTO dyndns_error (`id`, `error`, `date`) VALUES (?,?,?);'
+
+    cur    = dbcon.cursor()
+    cur.execute( insert, entry )
+
+    dbcon.commit()
+    dbcon.close()
+
+def get_last_errors():
+    dbcon = sqlite3.connect( dbfile )
+
+    sql = 'SELECT date, error FROM dyndns_error ORDER BY id DESC LIMIT ?;'
+    cur = dbcon.cursor()
+    cur.execute( sql, [ error_tolerance ] )
+
+    keys   = [ i[0] for i in cur.description ]
+    values = cur.fetchall()
+
+    return [ dict( zip( keys, v ) ) for v in values ]
+
 import pushover
 def push_msg( msg, prio=0, expire=3600, retry=60 ):
     if len( po_recip ) > 0:
@@ -78,6 +167,7 @@ def insert_new( itype, value ):
 
     cur = dbcon.cursor()
     cur.execute( getIdSql )
+
     max_id = cur.fetchone()[0]
     if max_id == None:
         max_id = 0
@@ -91,6 +181,7 @@ def insert_new( itype, value ):
 
     cur = dbcon.cursor()
     cur.execute( insert, entry )
+
     dbcon.commit()
     dbcon.close()
 
@@ -153,12 +244,15 @@ while True:
                 method_params=change
             )
             if dyndnsupdate[ 'code' ] == 1000:
+                reset_error_state()
                 for c, val in change.items():
                     s = list( api_keys.keys())[ list( api_keys.values()).index( c ) ]
                     insert_new( s, val )
                     push_msg( 'Updated {} record to {} – current DNS was {}'.format( s, val, old_data[ s ][ 'current' ] ) )
             else:
-                push_msg( 'ERROR: Updating DynDNS was not successfull.\nChange object would have been:\n\n{}'.format( json.dumps( old_data ) ), 2 )
+                write_error( json.dumps( old_data, indent=json_indent ) )
+                if check_error_send():
+                    push_msg( 'ERROR: Updating DynDNS was not successfull.\nChange object would have been:\n\n{}\n\n====\n\nAdditional information about the last errors:\n\n{}'.format( json.dumps( old_data, indent=json_indent ), json.dumps( get_last_errors(), indent=json_indent ) ), 2 )
         else:
             push_msg( 'ERROR: Login to INWX was not successfull.\nChange object would have been:\n\n{}'.format( json.dumps( old_data ) ), 2 )
         # empty the change data objects

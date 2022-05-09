@@ -1,4 +1,6 @@
 .env*
 !.env.example
 *.sqlite
+*.db
 __pycache__
+yoyo.ini
