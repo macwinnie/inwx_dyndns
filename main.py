@@ -258,5 +258,7 @@ while True:
         # empty the change data objects
         change   = {}
         old_data = {}
+    else:
+        reset_error_state()
 
     time.sleep( lensleep )
